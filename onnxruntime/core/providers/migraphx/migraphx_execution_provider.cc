@@ -705,13 +705,13 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
   for (const auto& index : graph_nodes_index) {
     node_set.insert(index);
     // If the subgraph contains an If node, skip fusion
-    if (graph.GetNode(index)->OpType() == std::string("If")) {
+    if (graph.GetNode(index)->OpType() == "If") {
       is_skip_fuse = true;
     }
   }
 
   // If the parent graph is an If node, skip fusion
-  if ((graph.ParentNode() != nullptr && graph.ParentNode()->OpType() == std::string("If"))) {
+  if ((graph.ParentNode() != nullptr && graph.ParentNode()->OpType() == "If")) {
       is_skip_fuse = true;
   }
 
@@ -724,11 +724,12 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
   // Find inputs and outputs of the subgraph
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
   std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
-  std::unordered_set<const NodeArg*> erased;
-  int input_order = 0;
-  int output_order = 0;
 
   if (!is_skip_fuse) {
+    std::unordered_set<const NodeArg*> erased;
+    int input_order = 0;
+    int output_order = 0;
+
     for (const auto& index : graph_nodes_index) {
       sub_graph->Nodes().push_back(index);
       const auto& node = graph.GetNode(index);
@@ -769,7 +770,7 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
 
           // Account for implicit inputs for "If" operator destination indexing
           // Addresses an index out of bounds issue but "If" operator still has functional issues.
-          if (it->GetNode().OpType() == std::string("If")) {
+          if (it->GetNode().OpType() == "If") {
             size_t num_of_explicit_inputs = it->GetNode().InputDefs().size();
             if (num_of_explicit_inputs > arg_index) {
               output = input_defs.at(arg_index);
