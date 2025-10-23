@@ -620,11 +620,12 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     }
 
     const auto& attributes = node->GetAttributes();
-    if (attributes.count("starts") > 0 and attributes.count("ends") > 0) {
-      auto starts = toVector((*attributes.find("starts")).second.ints());
-      auto ends = toVector((*attributes.find("ends")).second.ints());
+    if (attributes.count("starts") > 0 && attributes.count("ends") > 0) {
+      const ONNX_NAMESPACE::int64s& starts = (*attributes.find("starts")).second.ints();
+      const ONNX_NAMESPACE::int64s& ends = (*attributes.find("ends")).second.ints();
+
       for (std::size_t i = 0; i < starts.size(); ++i) {
-        if (starts.at(i) > ends.at(i)) {
+        if (starts[i] > ends[i]) {
           return true;
         }
       }
@@ -1101,6 +1102,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
               } },
                                                  true);
     } else {
+      std::string unsupported = graph_viewer.GetNode(node_idx)->Name();
       unsupported_nodes_idx.push_back(node_idx);
     }
   }
