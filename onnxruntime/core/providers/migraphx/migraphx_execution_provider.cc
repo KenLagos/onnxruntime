@@ -1102,7 +1102,6 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
               } },
                                                  true);
     } else {
-      std::string unsupported = graph_viewer.GetNode(node_idx)->Name();
       unsupported_nodes_idx.push_back(node_idx);
     }
   }
