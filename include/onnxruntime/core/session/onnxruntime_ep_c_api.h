@@ -338,8 +338,14 @@ struct OrtEpApi {
    * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
    * are available for EP usage.
    *
-   * At most one DEFAULT and one HOST_ACCESSIBLE entry can be added.
-   * Multiple calls for the same memory type will replace a previous entry.
+   * Multiple calls for the same entry type will replace a previous entry.
+   *
+   * Available entries:
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *   - OrtDeviceAllocator with type of OrtDeviceMemoryType_HOST_ACCESSIBLE
+   *   - OrtReadOnlyAllocator with type of OrtDeviceMemoryType_DEFAULT
+   *     - if provided this allocator will only be used to copy initializers to the device the EP uses.
+   *       ORT will use the OrtDeviceAllocator if not provided.
    *
    * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
    * \param[in] allocator_memory_info The OrtMemoryInfo information for the allocator.
@@ -424,6 +430,41 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the OrtSyncStreamImpl associated with an OrtSyncStream instance.
+   *
+   * This allows an the plugin library to connect its OrtSyncStreamImpl instance with an OrtSyncStream if needed.
+   *
+   * \param[in] stream The OrtSyncStream instance to find an OrtSyncStreamImpl for.
+   * \return The associated OrtSyncStreamImpl if found. nullptr otherwise.
+   *
+   * \since Version 1.23.
+   *
+   * \remarks There should always be an OrtSyncStreamImpl associated with an OrtSyncStream instance that the EP gets.
+   */
+  ORT_API_T(const OrtSyncStreamImpl*, SyncStream_GetImpl, _In_ const OrtSyncStream* stream);
+
+  /** \brief Get the current sync ID for a stream.
+   *
+   * \param[in] stream The OrtSyncStream to get the sync ID for.
+   * \return Current sync ID.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, SyncStream_GetSyncId, _In_ const OrtSyncStream* stream);
+
+  /** \brief Get the sync ID for the last time the consumer_stream waited on the producer_stream.
+   *
+   * When two streams are synchronized, the sync id represents the event used in that synchronization.
+   *
+   * \param[in] producer_stream The OrtSyncStream that produced the data.
+   * \param[in] consumer_stream The OrtSyncStream that waited on the producer_stream.
+   * \return ID for last sync. 0 if no sync has occurred between the two streams.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint64_t, GetSyncIdForLastWaitOnSyncStream,
+            _In_ const OrtSyncStream* producer_stream, _In_ const OrtSyncStream* consumer_stream);
 };
 
 /**
@@ -440,18 +481,6 @@ typedef enum OrtEpDataLayout {
 
   OrtEpDataLayout_Default = OrtEpDataLayout_NCHW,
 } OrtEpDataLayout;
-
-/**
- * \brief Enumeration describing the compatibility state of a compiled model relative to an execution provider.
- *
- * \since Version 1.23.
- */
-typedef enum OrtCompiledModelCompatibility {
-  OrtCompiledModelCompatibility_EP_NOT_APPLICABLE = 0,
-  OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL,
-  OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION,
-  OrtCompiledModelCompatibility_EP_UNSUPPORTED,
-} OrtCompiledModelCompatibility;
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
@@ -860,20 +889,28 @@ struct OrtEpFactory {
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
 
-  /** \brief Validate the compatibility of a compiled model with the execution provider.
+  /** \brief Validate the compatibility of a compiled model with the execution provider factory for one or more devices.
    *
-   * This function validates if a model produced with the supplied compatibility info string is supported by the underlying EP.
-   * The EP should check if a compiled model is compatible with the EP and set the model_compatibility parameter accordingly.
+   * Given a compatibility info string produced during model compilation, the EP factory should determine whether the
+   * compiled model is compatible with the EP factory when targeting the provided hardware devices. All devices provided
+   * must belong to the same execution provider instance that this factory creates.
+   *
+   * The EP factory implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
+   * evaluating compatibility and set `model_compatibility` accordingly.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] compatibility_info The compatibility information string that will be used
-   * \param[out] model_compatibility OrtCompiledModelCompatibility enum value describing the compatibility of the model with the EP.
+   * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
+   * \param[in] num_devices Number of entries in `devices`.
+   * \param[in] compatibility_info The compatibility information string produced when the model was compiled.
+   * \param[out] model_compatibility OrtCompiledModelCompatibility value describing the compatibility of the model with the EP.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValidateCompiledModelCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                  _In_ size_t num_devices,
                   _In_ const char* compatibility_info,
                   _Out_ OrtCompiledModelCompatibility* model_compatibility);
 

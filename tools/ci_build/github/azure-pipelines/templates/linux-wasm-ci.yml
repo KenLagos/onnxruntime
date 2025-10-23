@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: SkipPublish
   type: boolean
@@ -83,6 +83,9 @@ jobs:
       versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '22.x'
 
   - ${{if eq(parameters.WithCache, true)}}:
     - script: |

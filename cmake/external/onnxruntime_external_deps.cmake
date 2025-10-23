@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 message(STATUS "Loading Dependencies URLs ...")
 
 include(external/helper_functions.cmake)
@@ -333,7 +336,13 @@ if (onnxruntime_ENABLE_CPUINFO)
       set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-      set(CPUINFO_SUPPORTED TRUE)
+      # There's an error when linking with cpuinfo on arm64ec with a vcpkg build (--use_vcpkg).
+      # TODO Fix it and then re-enable cpuinfo on arm64ec.
+      if (onnxruntime_target_platform STREQUAL "ARM64EC")
+        set(CPUINFO_SUPPORTED FALSE)
+      else()
+        set(CPUINFO_SUPPORTED TRUE)
+      endif()
     elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
       message(WARNING
         "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
@@ -594,10 +603,6 @@ if(NOT (onnx_FOUND OR ONNX_FOUND)) # building ONNX from source
   endif()
 endif()
 
-if (onnxruntime_RUN_ONNX_TESTS)
-  add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
-endif()
-
 if(onnxruntime_ENABLE_DLPACK)
   message(STATUS "dlpack is enabled.")
 
@@ -817,6 +822,14 @@ if(onnxruntime_USE_COREML)
   # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
   FetchContent_Populate(coremltools)
 
+endif()
+
+if(onnxruntime_USE_KLEIDIAI)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
 endif()
 
 set(onnxruntime_LINK_DIRS)

@@ -607,7 +607,6 @@ endif()
 
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_COREML)
@@ -688,9 +687,6 @@ endif()
 
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
-  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/migraphx/migraphx_execution_provider_utils.h")
-  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
@@ -1230,6 +1226,12 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${onnxruntime_perf_test_src_patterns}
       )
     onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+
+    # ABSL_FLAGS_STRIP_NAMES is set to 1 by default to disable flag registration when building for Android, iPhone, and "embedded devices".
+    # See the issue: https://github.com/abseil/abseil-cpp/issues/1875
+    # We set it to 0 for all builds to be able to use ABSL flags for onnxruntime_perf_test.
+    target_compile_definitions(onnxruntime_perf_test PRIVATE ABSL_FLAGS_STRIP_NAMES=0)
+
     if(MSVC)
       target_compile_options(onnxruntime_perf_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
@@ -1252,7 +1254,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
             onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
             ${onnxruntime_EXTERNAL_LIBRARIES}
-            ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+            absl::flags absl::flags_parse ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
       if(NOT WIN32)
         if(onnxruntime_USE_SNPE)
           list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
@@ -1272,7 +1274,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
       endif()
     else()
-      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+      target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common absl::flags absl::flags_parse ${onnx_test_libs})
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -1798,6 +1800,7 @@ endif()
 if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
+  # example_plugin_ep
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/*.cc")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
@@ -1819,6 +1822,9 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
 
   set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
+
+  set_target_properties(example_plugin_ep PROPERTIES FOLDER "ONNXRuntimeTest")
+  source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_autoep_test_library_src})
 
   # test library
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"

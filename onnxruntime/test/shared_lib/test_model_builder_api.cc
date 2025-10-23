@@ -118,6 +118,9 @@ struct TestAllocator : public OrtAllocator {
     Reserve = [](struct OrtAllocator* /*this*/, size_t /*size*/) -> void* {
       throw std::runtime_error("This should not be used");
     };
+
+    GetStats = nullptr;
+    AllocOnStream = nullptr;
   }
 
   // initializers that are used directly by the model. as there's no copy they must remain valid.
@@ -417,7 +420,7 @@ TEST(ModelEditorAPITest, BasicModelEdit_CxxApi) {
 
   // typically this isn't needed. we replace this input but need to read info from it later on in the test
   // validation so we save the info locally to keep it accessible.
-  auto orig_input_name = graph_inputs[0].Name();
+  auto orig_input_name = graph_inputs[0].GetName();
   auto input_shape = graph_inputs[0].TypeInfo().GetTensorTypeAndShapeInfo().GetShape();
   const std::string new_input_name = "Int64Input";
 
@@ -586,7 +589,7 @@ TEST(ModelEditorAPITest, InvalidModelEdit) {
 
     Node node("Cast", domain, "NewInputNode", {new_input_name},
               // the existing node will now consume the output from the Cast instead of a graph input
-              {graph_inputs[0].Name()},
+              {graph_inputs[0].GetName()},
               attributes);
     graph.AddNode(node);
 

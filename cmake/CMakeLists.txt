@@ -29,6 +29,7 @@ include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
 include(CheckFunctionExists)
+include(CheckSymbolExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
@@ -83,6 +84,11 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
+# iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
+if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+    message(WARNING "Disabling KleidiAI: not supported on Apple x86_64 platforms")
+  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
+endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -92,7 +98,8 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
-option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -148,6 +155,7 @@ option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
 option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
+option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON;NOT onnxruntime_USE_CUDA" OFF)
@@ -273,8 +281,6 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
 endif()
-
-
 
 
 # Single output director for all binaries
@@ -648,17 +654,25 @@ else()
   endif()
 endif()
 
-if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
-    (onnxruntime_target_platform STREQUAL "aarch64") OR
-    (onnxruntime_target_platform STREQUAL "ARM64") OR
-    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
-  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-  if (NOT HAS_ARM64_DOTPROD)
-    message(FATAL_ERROR  "The compiler doesn't support dotprod")
-  endif()
-  if (NOT HAS_ARM64_I8MM)
-    message(FATAL_ERROR  "The compiler doesn't support i8mm")
+if (onnxruntime_USE_KLEIDIAI AND (
+      (onnxruntime_target_platform STREQUAL "aarch64") OR
+      (onnxruntime_target_platform STREQUAL "ARM64") OR
+      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+
+  # TODO Add checks for MSVC Compilation
+  if(NOT MSVC)
+    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+    if (NOT HAS_ARM64_DOTPROD)
+      message(FATAL_ERROR "The compiler doesn't support dotprod")
+    endif()
+    if (NOT HAS_ARM64_I8MM)
+      message(FATAL_ERROR "The compiler doesn't support i8mm")
+    endif()
+  else()
+    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
+    set(HAS_ARM64_DOTPROD TRUE)
+    set(HAS_ARM64_I8MM TRUE)
   endif()
 endif()
 
@@ -682,6 +696,7 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
@@ -692,6 +707,11 @@ if (onnxruntime_USE_CUDA)
   elseif(WIN32 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
     message( STATUS "Flash-Attention unsupported in Windows with CUDA compiler version < 12.0")
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+    message( STATUS "FpA IntB Gemm unsupported for CUDA compiler version < 12.0")
+    set(onnxruntime_USE_FPA_INTB_GEMM OFF)
   endif()
 
   if (WIN32)
@@ -721,6 +741,11 @@ if (onnxruntime_USE_CUDA)
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
+    endif()
+
+    if (onnxruntime_USE_FPA_INTB_GEMM)
+      message( STATUS "Enable FpA IntB Gemm for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
     endif()
 endif()
 
@@ -1005,8 +1030,16 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
     endif()
 
+    if (onnxruntime_DISABLE_FLOAT4_TYPES)
+      target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT4_TYPES)
+    endif()
+
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
+    endif()
+    # TODO: Narrow scope for Kleidiai compile
+    if (onnxruntime_USE_KLEIDIAI)
+      target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
